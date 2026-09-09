@@ -1,0 +1,9 @@
+# Python bytecode from running the tool
+__pycache__/
+*.py[cod]
+
+# PyInstaller output
+.build/
+build/
+dist/
+*.spec

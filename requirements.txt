@@ -1,0 +1,13 @@
+# PNG Squeezer
+#
+# Pillow and numpy do the decoding and the quality measurement.
+# imagequant is libimagequant -- the same engine pngquant and TinyPNG use.
+# pyoxipng is the lossless re-packer that runs after quantisation.
+# tkinterdnd2 adds drag-and-drop; without it the window still works, you just
+# have to click to pick files.
+
+Pillow>=10.0
+numpy>=1.24
+imagequant>=1.1.1
+pyoxipng>=9.0
+tkinterdnd2>=0.4
