@@ -4,7 +4,7 @@ This module is deliberately free of any UI import so it can be sent to a
 ``ProcessPoolExecutor`` worker on Windows, where every worker re-imports the
 module it was handed.
 
-The pipeline is the one pngquant/TinyPNG use:
+The pipeline:
 
     RGBA  ->  libimagequant (median cut + Floyd-Steinberg)  ->  8-bit palette
           ->  oxipng (filter search + deflate, palette bit-depth reduction)
@@ -27,7 +27,7 @@ from typing import Callable, Iterable, Iterator, Sequence
 import numpy as np
 from PIL import Image, ImageFilter
 
-try:  # the real pngquant engine; the tool still works without it
+try:  # the quantiser; the tool still works without it
     import imagequant
 
     HAVE_IMAGEQUANT = True
@@ -121,9 +121,9 @@ class Options:
     keep_aspect: bool = True
     no_enlarge: bool = True
     # 0 = sharpest (Lanczos, every pixel crisp), 100 = softest. Lanczos alone
-    # leaves resized game art looking crunchier than what iLoveIMG and friends
-    # produce, and the palette step afterwards exaggerates it further, so the
-    # default sits at a gentler bicubic.
+    # leaves resized game art looking crunchier than other resizers produce,
+    # and the palette step afterwards exaggerates it further, so the default
+    # sits at a gentler bicubic.
     smoothing: int = 50
 
     #///////////////////////////////////////////////////////////////////////////
@@ -472,7 +472,7 @@ def _choose_palette(
     This is where most of the compression comes from. A fixed palette wastes
     space on images that do not need it -- a frame that looks identical with
     112 colours does not benefit from 198 -- so the size is searched instead
-    of assumed, which is what TinyPNG does and what this tool did not.
+    of assumed. A fixed size wastes bytes on images that do not need them.
 
     Quality is judged on the quantised pixels directly, before the PNG is ever
     encoded. Encoding is the expensive half, and running oxipng once per probe

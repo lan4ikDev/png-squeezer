@@ -1036,18 +1036,23 @@ class FileList(CanvasWidget):
         last = min(len(self._rows), int((scroll + height) // self.ROW_HEIGHT) + 1)
         for index in range(first, last):
             top = index * self.ROW_HEIGHT - scroll
-            self._draw_row(self._rows[index], top, width, index == self._hover_index)
+            self._draw_row(self._rows[index], top, width,
+                           index == self._hover_index, index % 2 == 1)
 
         self._draw_scrollbar(width, height)
 
     #///////////////////////////////////////////////////////////////////////////
-    def _draw_row(self, row: FileRow, top: float, width: int, hovered: bool) -> None:
+    def _draw_row(self, row: FileRow, top: float, width: int, hovered: bool,
+                  striped: bool = False) -> None:
         height = self.ROW_HEIGHT
+        # Alternating bands make a long list of near-identical filenames far
+        # easier to track across; the hover state sits on top of them.
         if hovered:
             self.create_rectangle(0, top, width, top + height,
                                   fill=Color.surface_high, outline="")
-        self.create_line(14, top + height - 0.5, width - 14, top + height - 0.5,
-                         fill=Color.border_soft)
+        elif striped:
+            self.create_rectangle(0, top, width, top + height,
+                                  fill=Color.stripe, outline="")
 
         dot_x = 20
         dot_y = top + height / 2

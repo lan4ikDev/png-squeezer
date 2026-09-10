@@ -21,7 +21,7 @@ import sys
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="png_squeezer",
-        description="Сжатие PNG в 8-битную палитру (движок pngquant + oxipng). "
+        description="Сжатие PNG в 8-битную палитру (libimagequant + oxipng). "
                     "Без аргументов открывает графическое окно.",
     )
     parser.add_argument("paths", nargs="*",

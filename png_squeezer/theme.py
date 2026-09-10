@@ -39,6 +39,9 @@ class Color:
     danger = "#F2555A"
 
     track = "#232936"
+    # Barely-there band for alternating list rows: enough to follow one line
+    # across the window, not enough to read as a separate element.
+    stripe = "#191D25"
 
 
 #endregion

@@ -63,12 +63,16 @@ def build(work_dir: str, one_file: bool) -> str:
         "--collect-all", "tkinterdnd2",
         "--collect-all", "imagequant",
         "--collect-binaries", "oxipng",
-        # Nothing in the app plots anything; excluding these keeps the build
-        # from ballooning if they happen to be installed.
+        # soundfile ships libsndfile as a bundled native library that
+        # PyInstaller cannot find by following imports.
+        "--collect-all", "soundfile",
+        # Nothing in the app plots anything, and imageio-ffmpeg carries an
+        # 84 MB binary the audio path deliberately does not use.
         "--exclude-module", "matplotlib",
         "--exclude-module", "scipy",
         "--exclude-module", "pandas",
         "--exclude-module", "pytest",
+        "--exclude-module", "imageio_ffmpeg",
     ]
     if one_file:
         command.append("--onefile")

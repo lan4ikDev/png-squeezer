@@ -2,7 +2,7 @@
 
 Two tools share the window, chosen by the switch in the header:
 
-* **Сжатие** -- the TinyPNG behaviour. No knobs on screen; the quality
+* **Сжатие** -- palette compression. No knobs on screen; the quality
   controls live behind the gear icon because the defaults are the answer
   almost every time.
 * **Изменить размер** -- percent or pixel resizing, with its panel open by
@@ -30,7 +30,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from . import animation, core
+from . import animation, audio, core
 from .core import BatchTotals, Options, Result, human_size
 from .theme import Color, font, ratio_color, round_rect
 from .widgets import (
@@ -57,6 +57,7 @@ except Exception:  # pragma: no cover - optional dependency
 
 TOOL_COMPRESS = 0
 TOOL_RESIZE = 1
+TOOL_AUDIO = 2
 
 OUTPUT_ZIP = 0
 OUTPUT_REPLACE = 1
@@ -155,6 +156,23 @@ def describe_note(note: str) -> str:
         return f"палитра схлопнулась бы до {detail} цветов"
     if code == core.NOTE_ERROR:
         return f"ошибка сжатия: {detail}"
+    return wording.get(code, note)
+
+
+#///////////////////////////////////////////////////////////////////////////////
+def describe_audio_note(note: str) -> str:
+    """Wording for the audio engine's note codes."""
+
+    code, _, detail = note.partition(":")
+    wording = {
+        audio.NOTE_NO_ENGINE: "не установлен soundfile",
+        audio.NOTE_NOT_SMALLER: "пережатие не уменьшило файл",
+        audio.NOTE_UNSUPPORTED: "формат не поддерживается",
+    }
+    if code == audio.NOTE_DAMAGED:
+        return f"звук изменился бы слишком сильно ({detail}%)" if detail else "результат повреждён"
+    if code == audio.NOTE_ERROR:
+        return f"ошибка кодирования: {detail}"
     return wording.get(code, note)
 
 
@@ -313,6 +331,7 @@ class SqueezerApp:
         self._build_body()
         self._build_footer()
         self._on_smoothing_changed(self.smoothing_slider.value)
+        self._on_audio_quality_changed(self.audio_quality.value)
         self._install_dnd()
         self._sync_layout()
         self._sync_ui()
@@ -360,9 +379,9 @@ class SqueezerApp:
             background=Color.window, foreground=Color.text_faint, font=font(self.root, 9))
         self.subtitle_label.pack(anchor="w")
 
-        self.tool_switch = Segmented(header, ["Сжатие", "Изменить размер"],
+        self.tool_switch = Segmented(header, ["Изображения", "Размер", "Аудио"],
                                      self._on_tool_changed, height=40)
-        self.tool_switch.configure(width=310)
+        self.tool_switch.configure(width=340)
         self.tool_switch.pack(side="right")
 
     #///////////////////////////////////////////////////////////////////////////
@@ -392,7 +411,49 @@ class SqueezerApp:
         self.panels.pack(fill="x", padx=26, pady=(12, 0))
 
         self._build_resize_panel()
+        self._build_audio_panel()
         self._build_settings_panel()
+
+    #///////////////////////////////////////////////////////////////////////////
+    def _build_audio_panel(self) -> None:
+        self.audio_card, inner = card(self.panels)
+
+        top = tk.Frame(inner, background=Color.surface)
+        top.pack(fill="x", padx=16, pady=(14, 8))
+
+        tk.Label(top, text="Качество", background=Color.surface,
+                 foreground=Color.text_dim, font=font(self.root, 10)).pack(side="left")
+
+        self.audio_quality = Slider(top, 0, 100, 55, self._on_audio_quality_changed,
+                                    width=180, height=26, background=Color.surface)
+        self.audio_quality.pack(side="left", padx=(10, 10))
+
+        self.audio_quality_label = tk.Label(top, text="", background=Color.surface,
+                                           foreground=Color.text_dim, anchor="w",
+                                           font=font(self.root, 9))
+        self.audio_quality_label.pack(side="left")
+
+        bottom = tk.Frame(inner, background=Color.surface)
+        bottom.pack(fill="x", padx=16, pady=(0, 14))
+
+        self.audio_mono = Toggle(bottom, "Свести в моно", False,
+                                 lambda _v: self._update_hint(), background=Color.surface)
+        self.audio_mono.configure(width=160)
+        self.audio_mono.pack(side="left")
+
+        tk.Label(bottom, text="Формат", background=Color.surface,
+                 foreground=Color.text_dim,
+                 font=font(self.root, 10)).pack(side="left", padx=(22, 10))
+
+        self.audio_format = Segmented(bottom, ["Как есть", "Ogg Vorbis"],
+                                      lambda _i: self._update_hint(), height=32,
+                                      background=Color.surface)
+        self.audio_format.configure(width=230)
+        self.audio_format.pack(side="left")
+
+        self.audio_note = tk.Label(bottom, text="", background=Color.surface,
+                                   foreground=Color.text_faint, font=font(self.root, 9))
+        self.audio_note.pack(side="right")
 
     #///////////////////////////////////////////////////////////////////////////
     def _build_resize_panel(self) -> None:
@@ -534,8 +595,22 @@ class SqueezerApp:
         )
         self.drop_zone.pack(fill="both", expand=True)
 
-        self.list_frame = tk.Frame(body, background=Color.border)
-        self.file_list = FileList(self.list_frame)
+        self.list_frame = tk.Frame(body, background=Color.window)
+
+        header = tk.Frame(self.list_frame, background=Color.window)
+        header.pack(fill="x", pady=(0, 6))
+        self.list_title = tk.Label(header, text="Файлы", background=Color.window,
+                                   foreground=Color.text_dim,
+                                   font=font(self.root, 10, "bold"))
+        self.list_title.pack(side="left")
+        self.list_subtitle = tk.Label(header, text="", background=Color.window,
+                                      foreground=Color.text_faint,
+                                      font=font(self.root, 9))
+        self.list_subtitle.pack(side="right")
+
+        bordered = tk.Frame(self.list_frame, background=Color.border)
+        bordered.pack(fill="both", expand=True)
+        self.file_list = FileList(bordered)
         self.file_list.pack(fill="both", expand=True, padx=1, pady=1)
 
     #///////////////////////////////////////////////////////////////////////////
@@ -627,13 +702,18 @@ class SqueezerApp:
         # The resize panel is always open on the resize tool and never on the
         # compression tool; the settings panel is only ever opened by the gear.
         self.resize_card.pack_forget()
+        self.audio_card.pack_forget()
         self.settings_card.pack_forget()
         showing_panel = False
         if self.tool == TOOL_RESIZE:
             self.resize_card.pack(fill="x", pady=(0, 8))
             self._sync_resize_rows()
             showing_panel = True
-        if self.settings_open:
+        elif self.tool == TOOL_AUDIO:
+            self.audio_card.pack(fill="x", pady=(0, 8))
+            showing_panel = True
+        # The image settings are meaningless for audio, which has its own.
+        if self.settings_open and self.tool != TOOL_AUDIO:
             self.settings_card.pack(fill="x")
             showing_panel = True
         # An empty panel strip should not leave a band of padding behind.
@@ -644,6 +724,9 @@ class SqueezerApp:
         if self.tool == TOOL_COMPRESS:
             self.subtitle_label.configure(text="Сжатие PNG без видимой потери качества")
             action = "Сжать и заменить" if replacing else "Сжать"
+        elif self.tool == TOOL_AUDIO:
+            self.subtitle_label.configure(text="Пережатие звука без слышимой потери")
+            action = "Сжать и заменить" if replacing else "Сжать звук"
         else:
             self.subtitle_label.configure(text="Изменение размера с последующим сжатием")
             action = "Изменить и заменить" if replacing else "Изменить размер"
@@ -679,6 +762,7 @@ class SqueezerApp:
         """Word the drop zone for the current output mode."""
 
         deep = "включая все подпапки" if self.recursive_toggle.value else "без подпапок"
+        what = "аудио" if self.tool == TOOL_AUDIO else "PNG"
         if not HAVE_DND:
             self.drop_zone.set_labels(
                 "Выберите файлы или папку",
@@ -691,7 +775,7 @@ class SqueezerApp:
             )
         else:
             self.drop_zone.set_labels(
-                "Перетащите PNG или папку сюда",
+                f"Перетащите {what} или папку сюда",
                 f"результат вернётся одним ZIP-архивом, {deep}",
             )
 
@@ -780,6 +864,29 @@ class SqueezerApp:
             self._accept(list(self.source_paths), auto_start=False)
 
     #///////////////////////////////////////////////////////////////////////////
+    def _current_audio_options(self) -> audio.AudioOptions:
+        return audio.AudioOptions(
+            quality=self.audio_quality.value,
+            mono=self.audio_mono.value,
+            target_format=(audio.FORMAT_OGG if self.audio_format.selected == 1
+                           else audio.FORMAT_KEEP),
+            make_backup=self.backup_toggle.value and self.output == OUTPUT_REPLACE,
+        )
+
+    #///////////////////////////////////////////////////////////////////////////
+    def _on_audio_quality_changed(self, value: int) -> None:
+        if value >= 85:
+            hint = "почти без потерь"
+        elif value >= 55:
+            hint = "умеренно"
+        elif value >= 25:
+            hint = "сильно"
+        else:
+            hint = "очень сильно"
+        self.audio_quality_label.configure(text=f"{value} — {hint}")
+        self._update_hint()
+
+    #///////////////////////////////////////////////////////////////////////////
     def _current_options(self) -> Options:
         quality = self.quality_slider.value
         resize_mode = core.RESIZE_NONE
@@ -808,10 +915,15 @@ class SqueezerApp:
     def _pick_files(self) -> None:
         if self.busy:
             return
+        if self.tool == TOOL_AUDIO:
+            title = "Выберите аудиофайлы"
+            kinds = [("Аудио", "*.mp3 *.ogg *.wav *.flac *.opus *.oga"),
+                     ("Все файлы", "*.*")]
+        else:
+            title = "Выберите PNG"
+            kinds = [("PNG изображения", "*.png"), ("Все файлы", "*.*")]
         chosen = filedialog.askopenfilenames(
-            parent=self.root,
-            title="Выберите PNG",
-            filetypes=[("PNG изображения", "*.png"), ("Все файлы", "*.*")],
+            parent=self.root, title=title, filetypes=kinds,
         )
         if chosen:
             self._accept(list(chosen))
@@ -846,11 +958,29 @@ class SqueezerApp:
         """
 
         recursive = self.recursive_toggle.value
-        found = core.collect_pngs(paths, recursive=recursive)
+        wanted_audio = self.tool == TOOL_AUDIO
+
+        found = (audio.collect_audio(paths, recursive=recursive) if wanted_audio
+                 else core.collect_pngs(paths, recursive=recursive))
+
+        # Dropping a folder of sounds onto the image tab should just work
+        # rather than reporting "no PNG found" and leaving the user to hunt
+        # for the right tab.
         if not found:
+            other = (core.collect_pngs(paths, recursive=recursive) if wanted_audio
+                     else audio.collect_audio(paths, recursive=recursive))
+            if other:
+                self.tool = TOOL_COMPRESS if wanted_audio else TOOL_AUDIO
+                self.tool_switch.select(self.tool)
+                self._sync_ui()
+                found = other
+                wanted_audio = not wanted_audio
+
+        if not found:
+            kind = "Аудиофайлы" if wanted_audio else "PNG"
             where = "в папке" if any(os.path.isdir(p) for p in paths) else "в выбранном"
             extra = "" if recursive else " (обход подпапок выключен)"
-            self.summary.set_message(f"PNG не найдены {where}{extra}.", Color.warning)
+            self.summary.set_message(f"{kind} не найдены {where}{extra}.", Color.warning)
             return
 
         folders = [path for path in paths if os.path.isdir(path)]
@@ -882,6 +1012,9 @@ class SqueezerApp:
             f"Готово к обработке: {self._file_count(len(found))} "
             f"{self._folder_summary(found)}, {human_size(total_size)}",
             Color.text_dim)
+        self.list_subtitle.configure(
+            text=f"{self._file_count(len(found))} {self._folder_summary(found)} · "
+                 f"{human_size(total_size)}")
 
         # The bypass: dropping onto the replace mode just goes.
         if auto_start and self.output == OUTPUT_REPLACE:
@@ -949,12 +1082,20 @@ class SqueezerApp:
         if self.busy or not self.rows:
             return
 
-        options = self._current_options()
+        if self.tool == TOOL_AUDIO:
+            if not audio.HAVE_SOUNDFILE:
+                self.summary.set_message(
+                    "Для звука нужен пакет soundfile: pip install soundfile",
+                    Color.danger)
+                return
+            options = self._current_audio_options()
+        else:
+            options = self._current_options()
 
-        if self.tool == TOOL_RESIZE and options.resize_mode == core.RESIZE_PIXELS \
-                and not options.resize_width and not options.resize_height:
-            self.summary.set_message("Укажите ширину или высоту.", Color.warning)
-            return
+            if self.tool == TOOL_RESIZE and options.resize_mode == core.RESIZE_PIXELS \
+                    and not options.resize_width and not options.resize_height:
+                self.summary.set_message("Укажите ширину или высоту.", Color.warning)
+                return
 
         if self.output == OUTPUT_REPLACE and self.confirm_replace and not self._confirm():
             return
@@ -1007,6 +1148,9 @@ class SqueezerApp:
         self.dither_toggle.set_enabled(enabled)
         self.recursive_toggle.set_enabled(enabled)
         self.smoothing_slider.set_enabled(enabled)
+        self.audio_quality.set_enabled(enabled)
+        self.audio_mono.set_enabled(enabled)
+        self.audio_format.set_enabled(enabled)
         self.aspect_toggle.set_enabled(enabled)
         self.no_enlarge_toggle.set_enabled(enabled)
         self.resize_switch.set_enabled(enabled)
@@ -1043,8 +1187,10 @@ class SqueezerApp:
     def _run_batch(self, paths: list[str], options: Options, in_place: bool) -> None:
         """Worker thread: drive the pool, post every result to the queue."""
 
+        runner = (audio.squeeze_audio_many if isinstance(options, audio.AudioOptions)
+                  else core.squeeze_many)
         try:
-            for result in core.squeeze_many(
+            for result in runner(
                 paths, options, in_place=in_place, should_stop=self.stop_event.is_set
             ):
                 self.result_queue.put(("result", result))
@@ -1113,6 +1259,10 @@ class SqueezerApp:
             row.detail = result.error or "не удалось обработать"
             return
 
+        if isinstance(result, audio.AudioResult):
+            self._absorb_audio(result, row)
+            return
+
         if result.was_resized:
             geometry = (f"{result.source_width}×{result.source_height} → "
                         f"{result.width}×{result.height}")
@@ -1133,6 +1283,32 @@ class SqueezerApp:
             row.detail = f"{geometry} · уже оптимален"
             if result.notes:
                 row.detail += f" · {describe_note(result.notes[0])}"
+
+    #///////////////////////////////////////////////////////////////////////////
+    def _absorb_audio(self, result, row: FileRow) -> None:
+        """Describe one audio result in the list."""
+
+        if result.duration >= 60:
+            minutes, seconds = divmod(int(result.duration), 60)
+            length = f"{minutes}:{seconds:02d}"
+        elif result.duration >= 10:
+            length = f"{result.duration:.0f} с"
+        else:
+            # UI clicks are a fraction of a second; "0 с" tells nobody anything.
+            length = f"{result.duration:.1f} с"
+        channels = "моно" if result.channels_out == 1 else "стерео"
+        geometry = f"{length} · {result.samplerate // 1000} кГц · {channels}"
+
+        if result.method == audio.METHOD_REENCODED:
+            row.state = "done"
+            row.detail = f"{geometry} · отличие {result.drift * 100:.2f}%"
+            if result.suffix and result.suffix.lower() != os.path.splitext(row.path)[1].lower():
+                row.detail += f" · записан как {result.suffix}"
+        else:
+            row.state = "skipped"
+            row.detail = f"{geometry} · оставлен как есть"
+            if result.notes:
+                row.detail += f" · {describe_audio_note(result.notes[0])}"
 
     #///////////////////////////////////////////////////////////////////////////
     def _finish(self, fatal: str | None) -> None:
@@ -1187,7 +1363,12 @@ class SqueezerApp:
     def _default_archive_name(self) -> str:
         base = self._common_base(list(self.results.keys()))
         stem = os.path.basename(base.rstrip("\\/")) if base else ""
-        suffix = "resized" if self.tool == TOOL_RESIZE else "compressed"
+        if self.tool == TOOL_RESIZE:
+            suffix = "resized"
+        elif self.tool == TOOL_AUDIO:
+            suffix = "audio"
+        else:
+            suffix = "compressed"
         return f"{stem}-{suffix}.zip" if stem else f"png-squeezer-{suffix}.zip"
 
     #///////////////////////////////////////////////////////////////////////////
@@ -1279,6 +1460,7 @@ class SqueezerApp:
         self.last_archive = None
         self.replace_root = None
         self.file_list.clear()
+        self.list_subtitle.configure(text="")
         self._sync_layout()
         self.action_button.set_enabled(False)
         self.secondary_button.pack_forget()
